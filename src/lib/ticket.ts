@@ -48,12 +48,12 @@ export function createSampleTicket(overrides: Partial<Ticket> = {}): Ticket {
   return {
     id: "TKT-" + Math.random().toString(36).slice(2, 8).toUpperCase(),
     passenger: "Maria S. Almeida",
-    line: "Linha 042",
-    origin: "Terminal Central",
-    destination: "Praça da Estação",
+    line: "Linha 03",
+    origin: "Praça Regala",
+    destination: "Liceu Velho",
     issuedAt: now,
-    expiresAt: now + 1000 * 60 * 60, // 1 hour
-    fareCents: 475,
+    expiresAt: now + 1000 * 60 * 15, // 15 minutes
+    fareCents: 4200, // Representing 42 CVE (using 100 cents per unit for formatting if needed, but the user asked for "42 CVE")
     ...overrides,
   };
 }
