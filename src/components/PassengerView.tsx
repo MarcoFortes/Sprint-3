@@ -45,7 +45,7 @@ export function PassengerView() {
 
           <div className="grid grid-cols-2 gap-3 border-t border-dashed border-border bg-secondary/40 px-5 py-4 text-sm">
             <Field label="Passageiro" value={ticket.passenger} />
-            <Field label="Tarifa" value={`R$ ${(ticket.fareCents / 100).toFixed(2)}`} />
+            <Field label="Tarifa" value={`${Math.floor(ticket.fareCents / 100)} CVE`} />
             <Field label="Origem" value={ticket.origin} />
             <Field label="Destino" value={ticket.destination} />
             <Field
