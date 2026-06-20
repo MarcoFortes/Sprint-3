@@ -1,24 +1,21 @@
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { createSampleTicket, encryptTicket, type Ticket } from "@/lib/ticket";
-
-type Mode = "valid" | "expired" | "tampered";
+import { issueTicket, subscribe, getTicket, type Ticket } from "@/lib/ticket";
 
 export function PassengerView() {
-  const [mode, setMode] = useState<Mode>("valid");
-  const [ticket, setTicket] = useState<Ticket>(() => createSampleTicket());
+  const [ticket, setTicket] = useState<Ticket>(() => issueTicket());
 
-  const payload = useMemo(() => {
-    if (mode === "expired") {
-      return encryptTicket({ ...ticket, expiresAt: Date.now() - 1000 * 60 * 30 });
-    }
-    if (mode === "tampered") {
-      return "TRX1.@@@CORRUPTED@@@";
-    }
-    return encryptTicket(ticket);
-  }, [ticket, mode]);
+  // Re-render when the central state for this ticket changes (e.g. validated).
+  useEffect(() => {
+    return subscribe(() => {
+      const fresh = getTicket(ticket.token);
+      if (fresh) setTicket({ ...fresh });
+    });
+  }, [ticket.token]);
 
   const expIn = Math.max(0, Math.round((ticket.expiresAt - Date.now()) / 60000));
+  const statusTone =
+    ticket.status === "Ativo" ? "success" : ticket.status === "Utilizado" ? "danger" : "danger";
 
   return (
     <div className="px-4 pb-10">
@@ -38,9 +35,9 @@ export function PassengerView() {
 
           <div className="flex flex-col items-center gap-3 bg-white px-5 py-6">
             <div className="rounded-2xl bg-white p-3 ring-1 ring-border">
-              <QRCodeSVG value={payload} size={208} level="M" />
+              <QRCodeSVG value={ticket.token} size={208} level="M" />
             </div>
-            <p className="font-mono text-xs text-muted-foreground">{ticket.id}</p>
+            <p className="font-mono text-xs text-muted-foreground">{ticket.token}</p>
           </div>
 
           <div className="grid grid-cols-2 gap-3 border-t border-dashed border-border bg-secondary/40 px-5 py-4 text-sm">
@@ -48,43 +45,22 @@ export function PassengerView() {
             <Field label="Tarifa" value={`${Math.floor(ticket.fareCents / 100)} CVE`} />
             <Field label="Origem" value={ticket.origin} />
             <Field label="Destino" value={ticket.destination} />
-            <Field
-              label="Validade"
-              value={mode === "expired" ? "Expirado" : `${expIn} min`}
-              tone={mode === "expired" ? "danger" : "default"}
-            />
-            <Field
-              label="Status"
-              value={
-                mode === "valid" ? "Pronto para embarque" : mode === "expired" ? "Vencido" : "Adulterado"
-              }
-              tone={mode === "valid" ? "success" : "danger"}
-            />
+            <Field label="Validade" value={ticket.status === "Ativo" ? `${expIn} min` : ticket.status} />
+            <Field label="Status" value={ticket.status} tone={statusTone} />
           </div>
         </div>
 
         <div className="mt-6 rounded-2xl bg-card p-4 ring-1 ring-border">
           <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Modo de simulação
+            Estado do bilhete
           </p>
-          <div className="grid grid-cols-3 gap-2 text-xs">
-            {(["valid", "expired", "tampered"] as Mode[]).map((m) => (
-              <button
-                key={m}
-                onClick={() => setMode(m)}
-                className={`rounded-lg px-2 py-2 font-medium transition ${
-                  mode === m
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-secondary text-secondary-foreground hover:bg-secondary/70"
-                }`}
-              >
-                {m === "valid" ? "Válido" : m === "expired" ? "Expirado" : "Adulterado"}
-              </button>
-            ))}
-          </div>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            O QR Code carrega apenas um token único. A validação acontece sempre online,
+            consultando a base de dados central em tempo real.
+          </p>
           <button
-            onClick={() => setTicket(createSampleTicket())}
-            className="mt-3 w-full rounded-lg border border-border bg-background px-3 py-2 text-xs font-medium hover:bg-secondary"
+            onClick={() => setTicket(issueTicket())}
+            className="mt-3 w-full rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground hover:opacity-90"
           >
             Emitir novo bilhete
           </button>
@@ -112,5 +88,3 @@ function Field({
     </div>
   );
 }
-
-// Export helpers to share the "currently displayed payload" with validator via localStorage

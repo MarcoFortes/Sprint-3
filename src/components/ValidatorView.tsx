@@ -1,111 +1,73 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import {
-  appendLog,
-  createSampleTicket,
-  decryptTicket,
-  encryptTicket,
-  getLogs,
-  getUsedTickets,
-  markLogsSynced,
-  markTicketUsed,
-  type BoardingLog,
+  getWalletCents,
+  issueTicket,
+  subscribe,
+  validateOnline,
+  type Ticket,
 } from "@/lib/ticket";
 import { playError, playSuccess } from "@/lib/sounds";
 
 type Result =
   | { kind: "idle" }
-  | { kind: "success"; message: string }
+  | { kind: "loading" }
+  | { kind: "success"; ticket: Ticket }
   | { kind: "error"; message: string };
 
-// Demo: a small pool of payloads the "scanner" picks from at random.
-function makeScanPool(): string[] {
-  return [
-    encryptTicket(createSampleTicket()),
-    encryptTicket(createSampleTicket({ passenger: "João P. Ribeiro", line: "Linha 108" })),
-    encryptTicket(createSampleTicket({ expiresAt: Date.now() - 60_000, passenger: "Lucas Andrade" })),
-    "TRX1.@@@CORRUPTED@@@",
-  ];
+// A small pool of demo tokens the "scanner" picks from. We pre-seed the
+// central DB so the validator always has something to react to.
+const DEMO_TOKENS = ["TX-9482-ONLINE", "TX-5571-ONLINE", "TX-3140-ONLINE", "TX-0001-ONLINE"];
+
+let seeded = false;
+function ensureSeeded() {
+  if (seeded) return;
+  seeded = true;
+  issueTicket({ token: DEMO_TOKENS[0], passenger: "Maria S. Almeida" });
+  issueTicket({ token: DEMO_TOKENS[1], passenger: "João P. Ribeiro", line: "Linha 03" });
+  issueTicket({
+    token: DEMO_TOKENS[2],
+    passenger: "Lucas Andrade",
+    expiresAt: Date.now() - 60_000, // already expired
+  });
+  // DEMO_TOKENS[3] is intentionally NOT issued — simulates an unknown token.
 }
 
 export function ValidatorView() {
   const [result, setResult] = useState<Result>({ kind: "idle" });
-  const [logs, setLogs] = useState<BoardingLog[]>([]);
-  const [syncing, setSyncing] = useState(false);
   const [flash, setFlash] = useState(false);
 
   useEffect(() => {
-    setLogs(getLogs());
+    ensureSeeded();
   }, []);
 
-  function handleScan() {
-    const pool = makeScanPool();
-    const payload = pool[Math.floor(Math.random() * pool.length)];
+  const wallet = useSyncExternalStore(
+    subscribe,
+    () => getWalletCents(),
+    () => getWalletCents(),
+  );
 
-    try {
-      const ticket = decryptTicket(payload);
-      const used = getUsedTickets();
-      if (used[ticket.id]) {
-        finish("error", `Bilhete já utilizado (${ticket.id})`, {
-          ticketId: ticket.id,
-          passenger: ticket.passenger,
-          line: ticket.line,
-          status: "reused",
-        });
-        return;
-      }
-      if (ticket.expiresAt < Date.now()) {
-        finish("error", `Bilhete expirado — ${ticket.passenger}`, {
-          ticketId: ticket.id,
-          passenger: ticket.passenger,
-          line: ticket.line,
-          status: "expired",
-        });
-        return;
-      }
-      markTicketUsed(ticket.id);
-      finish("success", `Embarque registrado — ${ticket.passenger}`, {
-        ticketId: ticket.id,
-        passenger: ticket.passenger,
-        line: ticket.line,
-        status: "valid",
-      });
-    } catch {
-      finish("error", "QR Code inválido ou adulterado", {
-        ticketId: "—",
-        passenger: "Desconhecido",
-        line: "—",
-        status: "invalid",
-      });
-    }
-  }
+  async function handleScan() {
+    if (result.kind === "loading") return;
+    const token = DEMO_TOKENS[Math.floor(Math.random() * DEMO_TOKENS.length)];
+    setResult({ kind: "loading" });
 
-  function finish(
-    kind: "success" | "error",
-    message: string,
-    log: Omit<BoardingLog, "at" | "synced">,
-  ) {
-    if (kind === "success") {
+    const res = await validateOnline(token);
+
+    if (res.ok) {
       playSuccess();
       setFlash(true);
       setTimeout(() => setFlash(false), 1400);
+      setResult({ kind: "success", ticket: res.ticket });
+      setTimeout(() => setResult({ kind: "idle" }), 2600);
     } else {
       playError();
+      setResult({
+        kind: "error",
+        message: "Erro: Validação Falhou. Bilhete já utilizado ou inválido.",
+      });
+      setTimeout(() => setResult({ kind: "idle" }), 3000);
     }
-    setResult({ kind, message });
-    appendLog({ ...log, at: Date.now(), synced: false });
-    setLogs(getLogs());
-    setTimeout(() => setResult({ kind: "idle" }), 2600);
   }
-
-  async function handleSync() {
-    setSyncing(true);
-    await new Promise((r) => setTimeout(r, 1100));
-    markLogsSynced();
-    setLogs(getLogs());
-    setSyncing(false);
-  }
-
-  const pending = logs.filter((l) => !l.synced).length;
 
   return (
     <div className="relative px-4 pb-10">
@@ -127,7 +89,7 @@ export function ValidatorView() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Veículo</p>
-              <p className="text-base font-semibold">SDVBO-1042 · Linha 042</p>
+              <p className="text-base font-semibold">SDVBO-1042 · Linha 03</p>
             </div>
             <div className="rounded-full bg-success/15 px-3 py-1 text-xs font-medium text-success">
               Online
@@ -146,9 +108,10 @@ export function ValidatorView() {
             <p className="text-sm text-muted-foreground">Aponte para o QR Code do passageiro</p>
             <button
               onClick={handleScan}
-              className="mt-4 w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-sm transition hover:opacity-90 active:scale-[0.99]"
+              disabled={result.kind === "loading"}
+              className="mt-4 w-full rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground shadow-sm transition hover:opacity-90 active:scale-[0.99] disabled:opacity-60"
             >
-              Simular Leitura de QR Code
+              {result.kind === "loading" ? "Consultando central…" : "Simular Leitura de QR Code"}
             </button>
           </div>
 
@@ -160,57 +123,34 @@ export function ValidatorView() {
               <p className="mt-1 text-base font-semibold leading-tight">{result.message}</p>
             </div>
           )}
+
+          {result.kind === "success" && (
+            <div className="mt-4 rounded-xl bg-success/10 px-4 py-3 ring-1 ring-success/40">
+              <p className="text-[11px] font-bold uppercase tracking-widest text-success">
+                Validado online
+              </p>
+              <p className="mt-1 text-sm font-semibold text-foreground">
+                {result.ticket.passenger} · {result.ticket.token}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                −{Math.floor(result.ticket.fareCents / 100)} CVE da carteira central
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="rounded-3xl bg-card p-5 shadow-sm ring-1 ring-border">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-semibold">Logs locais do veículo</p>
+              <p className="text-sm font-semibold">Carteira central</p>
               <p className="text-xs text-muted-foreground">
-                {logs.length} registros · {pending} pendentes de envio
+                Saldo atualizado a cada validação online.
               </p>
             </div>
-            <button
-              onClick={handleSync}
-              disabled={syncing || pending === 0}
-              className="rounded-lg bg-foreground px-3 py-2 text-xs font-semibold text-background transition disabled:opacity-40"
-            >
-              {syncing ? "Sincronizando…" : "Sincronizar Logs Locais"}
-            </button>
+            <p className="text-lg font-bold tabular-nums">
+              {Math.floor(wallet / 100)} <span className="text-xs font-medium text-muted-foreground">CVE</span>
+            </p>
           </div>
-
-          <ul className="mt-4 divide-y divide-border">
-            {logs.length === 0 && (
-              <li className="py-6 text-center text-xs text-muted-foreground">
-                Nenhum embarque registrado ainda.
-              </li>
-            )}
-            {logs.slice(0, 6).map((l, i) => (
-              <li key={i} className="flex items-center justify-between py-2.5">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">{l.passenger}</p>
-                  <p className="font-mono text-[11px] text-muted-foreground">
-                    {l.ticketId} · {new Date(l.at).toLocaleTimeString()}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
-                      l.status === "valid"
-                        ? "bg-success/15 text-success"
-                        : "bg-danger/15 text-danger"
-                    }`}
-                  >
-                    {l.status}
-                  </span>
-                  <span
-                    className={`h-2 w-2 rounded-full ${l.synced ? "bg-success" : "bg-accent"}`}
-                    title={l.synced ? "Sincronizado" : "Pendente"}
-                  />
-                </div>
-              </li>
-            ))}
-          </ul>
         </div>
       </div>
     </div>

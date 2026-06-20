@@ -1,105 +1,104 @@
-// Simulated ticket encryption: base64-encoded JSON with a tiny XOR "cipher".
-// Purely for prototype purposes — not real cryptography.
+// Mock "central database" for the Transcor SDVBO online-only ticketing flow.
+// All state lives in module memory and is mutated synchronously after a
+// simulated network round-trip. No offline cache, no encryption, no signing.
+
+export type TicketStatus = "Ativo" | "Utilizado" | "Expirado";
 
 export type Ticket = {
-  id: string;
+  token: string; // e.g. "TX-9482-ONLINE"
   passenger: string;
   line: string;
   origin: string;
   destination: string;
-  issuedAt: number; // epoch ms
-  expiresAt: number; // epoch ms
-  fareCents: number;
+  fareCents: number; // value in CVE cents
+  status: TicketStatus;
+  issuedAt: number;
+  expiresAt: number;
+  usedAt?: number;
 };
 
-const SECRET = "TRANSCOR-SDVBO-2026";
+export type ValidationResult =
+  | { ok: true; ticket: Ticket; walletAfter: number }
+  | { ok: false; reason: "not_found" | "already_used" | "expired"; token: string };
 
-function xor(input: string, key: string): string {
+type Listener = () => void;
+
+// --- Central state -----------------------------------------------------------
+
+const tickets = new Map<string, Ticket>();
+let walletCents = 50_000; // central wallet starting balance (500 CVE)
+const listeners = new Set<Listener>();
+
+function emit() {
+  listeners.forEach((l) => l());
+}
+
+export function subscribe(l: Listener): () => void {
+  listeners.add(l);
+  return () => listeners.delete(l);
+}
+
+export function getWalletCents(): number {
+  return walletCents;
+}
+
+export function getTicket(token: string): Ticket | undefined {
+  return tickets.get(token);
+}
+
+// --- Helpers ----------------------------------------------------------------
+
+function randomCode(len = 4): string {
   let out = "";
-  for (let i = 0; i < input.length; i++) {
-    out += String.fromCharCode(input.charCodeAt(i) ^ key.charCodeAt(i % key.length));
-  }
+  for (let i = 0; i < len; i++) out += Math.floor(Math.random() * 10);
   return out;
 }
 
-function toB64(s: string): string {
-  if (typeof window === "undefined") return Buffer.from(s, "binary").toString("base64");
-  return btoa(s);
-}
-function fromB64(s: string): string {
-  if (typeof window === "undefined") return Buffer.from(s, "base64").toString("binary");
-  return atob(s);
-}
-
-export function encryptTicket(t: Ticket): string {
-  const json = JSON.stringify(t);
-  return "TRX1." + toB64(xor(json, SECRET));
-}
-
-export function decryptTicket(payload: string): Ticket {
-  if (!payload.startsWith("TRX1.")) throw new Error("Unknown payload format");
-  const body = payload.slice(5);
-  const json = xor(fromB64(body), SECRET);
-  return JSON.parse(json) as Ticket;
-}
-
-export function createSampleTicket(overrides: Partial<Ticket> = {}): Ticket {
+export function issueTicket(overrides: Partial<Ticket> = {}): Ticket {
   const now = Date.now();
-  return {
-    id: "TKT-" + Math.random().toString(36).slice(2, 8).toUpperCase(),
+  const token = overrides.token ?? `TX-${randomCode(4)}-ONLINE`;
+  const ticket: Ticket = {
+    token,
     passenger: "Maria S. Almeida",
     line: "Linha 03",
     origin: "Praça Regala",
     destination: "Liceu Velho",
+    fareCents: 4200, // 42 CVE
+    status: "Ativo",
     issuedAt: now,
-    expiresAt: now + 1000 * 60 * 15, // 15 minutes
-    fareCents: 4200, // Representing 42 CVE (using 100 cents per unit for formatting if needed, but the user asked for "42 CVE")
+    expiresAt: now + 1000 * 60 * 15,
     ...overrides,
   };
+  tickets.set(ticket.token, ticket);
+  emit();
+  return ticket;
 }
 
-// Local log storage (per-vehicle cache)
-const USED_KEY = "transcor.used_tickets";
-const LOG_KEY = "transcor.local_logs";
+// --- Online validation (simulated API call) ---------------------------------
 
-export type BoardingLog = {
-  ticketId: string;
-  passenger: string;
-  line: string;
-  at: number;
-  status: "valid" | "expired" | "reused" | "invalid";
-  synced: boolean;
-};
+export async function validateOnline(token: string): Promise<ValidationResult> {
+  // Simulate central DB round-trip latency.
+  await new Promise((r) => setTimeout(r, 650));
 
-export function getUsedTickets(): Record<string, number> {
-  try {
-    return JSON.parse(localStorage.getItem(USED_KEY) || "{}");
-  } catch {
-    return {};
+  const t = tickets.get(token);
+  if (!t) {
+    return { ok: false, reason: "not_found", token };
   }
-}
-export function markTicketUsed(id: string) {
-  const used = getUsedTickets();
-  used[id] = Date.now();
-  localStorage.setItem(USED_KEY, JSON.stringify(used));
-}
 
-export function getLogs(): BoardingLog[] {
-  try {
-    return JSON.parse(localStorage.getItem(LOG_KEY) || "[]");
-  } catch {
-    return [];
+  // Auto-flip to Expirado if needed.
+  if (t.status === "Ativo" && t.expiresAt < Date.now()) {
+    t.status = "Expirado";
+    emit();
   }
-}
-export function appendLog(log: BoardingLog) {
-  const all = getLogs();
-  all.unshift(log);
-  localStorage.setItem(LOG_KEY, JSON.stringify(all.slice(0, 50)));
-}
-export function markLogsSynced() {
-  const all = getLogs().map((l) => ({ ...l, synced: true }));
-  localStorage.setItem(LOG_KEY, JSON.stringify(all));
-}
-export function clearUsedTickets() {
-  localStorage.removeItem(USED_KEY);
+
+  if (t.status === "Utilizado") return { ok: false, reason: "already_used", token };
+  if (t.status === "Expirado") return { ok: false, reason: "expired", token };
+
+  // Mark as used and deduct fare from central wallet.
+  t.status = "Utilizado";
+  t.usedAt = Date.now();
+  walletCents = Math.max(0, walletCents - t.fareCents);
+  emit();
+
+  return { ok: true, ticket: { ...t }, walletAfter: walletCents };
 }
