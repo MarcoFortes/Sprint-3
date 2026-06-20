@@ -49,10 +49,10 @@
   --border: oklch(0.9 0.01 250);
   --input: oklch(0.92 0.01 250);
   --ring: oklch(0.55 0.15 255);
-  --success: oklch(0.7 0.22 145);
-  --success-foreground: oklch(0.99 0 0);
-  --danger: oklch(0.6 0.28 25);
-  --danger-foreground: oklch(0.99 0 0);
+  --success: #00875A;
+  --success-foreground: #ffffff;
+  --danger: #DE350B;
+  --danger-foreground: #ffffff;
   --brand: oklch(0.55 0.18 255);
   --brand-foreground: oklch(0.99 0 0);
 }
@@ -62,7 +62,7 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-family: "Inter", "Roboto", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   }
 }
 
