@@ -1,11 +1,5 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
-import {
-  getWalletCents,
-  issueTicket,
-  subscribe,
-  validateOnline,
-  type Ticket,
-} from "@/lib/ticket";
+import { useEffect, useState } from "react";
+import { issueTicket, validateOnline, type Ticket } from "@/lib/ticket";
 import { playError, playSuccess } from "@/lib/sounds";
 
 type Result =
@@ -40,11 +34,6 @@ export function ValidatorView() {
     ensureSeeded();
   }, []);
 
-  const wallet = useSyncExternalStore(
-    subscribe,
-    () => getWalletCents(),
-    () => getWalletCents(),
-  );
 
   async function handleScan() {
     if (result.kind === "loading") return;
@@ -139,19 +128,6 @@ export function ValidatorView() {
           )}
         </div>
 
-        <div className="rounded-3xl bg-card p-5 shadow-sm ring-1 ring-border">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-semibold">Carteira central</p>
-              <p className="text-xs text-muted-foreground">
-                Saldo atualizado a cada validação online.
-              </p>
-            </div>
-            <p className="text-lg font-bold tabular-nums">
-              {Math.floor(wallet / 100)} <span className="text-xs font-medium text-muted-foreground">CVE</span>
-            </p>
-          </div>
-        </div>
       </div>
     </div>
   );

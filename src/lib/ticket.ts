@@ -66,7 +66,7 @@ export function issueTicket(overrides: Partial<Ticket> = {}): Ticket {
     fareCents: 4200, // 42 CVE
     status: "Ativo",
     issuedAt: now,
-    expiresAt: now + 1000 * 60 * 15,
+    expiresAt: now + 1000 * 60 * 25,
     ...overrides,
   };
   tickets.set(ticket.token, ticket);
