@@ -34,11 +34,6 @@ export function ValidatorView() {
     ensureSeeded();
   }, []);
 
-  const wallet = useSyncExternalStore(
-    subscribe,
-    () => getWalletCents(),
-    () => getWalletCents(),
-  );
 
   async function handleScan() {
     if (result.kind === "loading") return;
