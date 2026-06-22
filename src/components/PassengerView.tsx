@@ -43,8 +43,8 @@ export function PassengerView() {
           <div className="grid grid-cols-2 gap-3 border-t border-dashed border-border bg-secondary/40 px-5 py-4 text-sm">
             <Field label="Passageiro" value={ticket.passenger} />
             <Field label="Tarifa" value={`${Math.floor(ticket.fareCents / 100)} CVE`} />
-            <Field label="Origem" value={ticket.origin} />
-            <Field label="Destino" value={ticket.destination} />
+            <Field label="Departure Station" value={ticket.origin} />
+            <Field label="Disembarkation Station" value={ticket.destination} />
             <Field label="Validade" value={ticket.status === "Ativo" ? `${expIn} min` : ticket.status} />
             <Field label="Status" value={ticket.status} tone={statusTone} />
           </div>

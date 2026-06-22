@@ -139,19 +139,6 @@ export function ValidatorView() {
           )}
         </div>
 
-        <div className="rounded-3xl bg-card p-5 shadow-sm ring-1 ring-border">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm font-semibold">Carteira central</p>
-              <p className="text-xs text-muted-foreground">
-                Saldo atualizado a cada validação online.
-              </p>
-            </div>
-            <p className="text-lg font-bold tabular-nums">
-              {Math.floor(wallet / 100)} <span className="text-xs font-medium text-muted-foreground">CVE</span>
-            </p>
-          </div>
-        </div>
       </div>
     </div>
   );
