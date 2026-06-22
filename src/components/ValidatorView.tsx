@@ -1,11 +1,5 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
-import {
-  getWalletCents,
-  issueTicket,
-  subscribe,
-  validateOnline,
-  type Ticket,
-} from "@/lib/ticket";
+import { useEffect, useState } from "react";
+import { issueTicket, validateOnline, type Ticket } from "@/lib/ticket";
 import { playError, playSuccess } from "@/lib/sounds";
 
 type Result =
